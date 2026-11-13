@@ -1,3 +1,4 @@
+import {bikeStatements} from './bikes-server.ts';
 import {expenseStatements} from './expenses-server.ts';
 import {LotBook} from './lot-stock.ts';
 import {purchaseStatements} from './purchases-server.ts';
@@ -8,7 +9,7 @@ import { validate } from './validation.ts';
 export function database(){if(!env.DB)throw Error('Banco de dados indisponível. Tente novamente.');return env.DB;}
 export function assertOrigin(req:Request){const o=req.headers.get('origin');if(o&&o!==new URL(req.url).origin)throw Error('Origem da requisição inválida.');}
 export function providerReady(){return !!(env.ZAPI_INSTANCE_ID&&env.ZAPI_TOKEN&&env.ZAPI_CLIENT_TOKEN);}
-export async function readData(scope:string){const db=database();const tables=['expenses','models','customers','sales','movements','ledger','birthdayLogs','purchases','purchaseItems','stockLots','stockLotBalances','saleLots','settings'];const r=await db.batch(tables.map(t=>db.prepare(`SELECT * FROM ${t} WHERE scope = ?${t==='settings'?'':' ORDER BY createdAt DESC'}`).bind(scope)));const d:any={};tables.forEach((t,i)=>{d[t]=t==='settings'?(r[i].results[0]||defaultSettings):r[i].results;});d.providerReady=providerReady();return d;}
+export async function readData(scope:string){const db=database();const tables=['bikeUnits','saleUnits','dataImports','expenses','models','customers','sales','movements','ledger','birthdayLogs','purchases','purchaseItems','stockLots','stockLotBalances','saleLots','settings'];const r=await db.batch(tables.map(t=>db.prepare(`SELECT * FROM ${t} WHERE scope = ?${t==='settings'?'':' ORDER BY createdAt DESC'}`).bind(scope)));const d:any={};tables.forEach((t,i)=>{d[t]=t==='settings'?(r[i].results[0]||defaultSettings):r[i].results;});d.providerReady=providerReady();return d;}
 export async function action(scope:string,name:string,input:unknown,requestId:string){
  if(!/^[a-f0-9-]{36}$/.test(requestId))throw Error('Identificador da operação inválido. Atualize a página.');
  const p=validate(name,input),db=database(),id=crypto.randomUUID(),createdAt=new Date().toISOString(),date=p.date||today();
@@ -21,7 +22,8 @@ export async function action(scope:string,name:string,input:unknown,requestId:st
  const update=(table:string,obj:Record<string,any>,key:string)=>{const keys=Object.keys(obj);batch.push(stmt(`UPDATE ${table} SET ${keys.map(k=>k+'=?').join(',')} WHERE id=? AND scope=?`,...Object.values(obj),key,scope));};
  const move=(o:any)=>insert('movements',{id:crypto.randomUUID(),scope,createdAt,date,...o});
  const entry=(o:any)=>insert('ledger',{id:crypto.randomUUID(),scope,createdAt,date,...o});
- if(['expense','payExpense','cancelExpense'].includes(name)){batch.push(...await expenseStatements(db,scope,name,p,id,createdAt));}
+ if(['stockLot','stockUnit'].includes(name)){batch.push(...await bikeStatements(db,scope,name,p,id,createdAt,date));}
+ else if(['expense','payExpense','cancelExpense'].includes(name)){batch.push(...await expenseStatements(db,scope,name,p,id,createdAt));}
  else if(['purchase','receivePurchase','cancelPurchase'].includes(name)){batch.push(...await purchaseStatements(db,scope,name,p,id,createdAt,date));}
  else if(name==='model'){
    const {id:existing,initialStock,initialLotCode,...fields}=p;
@@ -39,10 +41,11 @@ export async function action(scope:string,name:string,input:unknown,requestId:st
    const book=new LotBook(db,scope,createdAt),m=await get('models',p.modelId);if(!m)throw Error('Modelo não encontrado.');
    const source=await db.prepare('SELECT * FROM stockLots WHERE id=? AND scope=?').bind(p.fromLotId,scope).first<any>();if(!source)throw Error('Lote de origem não encontrado.');
    if(source.code.toUpperCase()===p.lotCode)throw Error('Escolha um lote de destino diferente.');
-   const rows=await book.take(p.modelId,p.quantity,p.fromLotId),target=await book.lot(p.lotCode,{receivedDate:p.date,notes:'Lote identificado a partir de '+source.code});
-   await book.add(target,p.modelId,p.quantity,rows[0].unitCost);book.sync(p.modelId);batch.push(...book.statements);
-   move({modelId:p.modelId,lotId:source.id,delta:-p.quantity,kind:'reclassificacao',unitCost:rows[0].unitCost,reference:'Identificação de lote',notes:'Destino: '+p.lotCode});
-   move({modelId:p.modelId,lotId:target,delta:p.quantity,kind:'reclassificacao',unitCost:rows[0].unitCost,reference:'Identificação de lote',notes:'Origem: '+source.code});
+   const target=await book.lot(p.lotCode,{receivedDate:p.date,notes:'Lote identificado a partir de '+source.code});
+   const rows=await book.transfer(p.modelId,p.quantity,p.fromLotId,target);batch.push(...book.statements);
+   const cost=Math.round(rows.reduce((n,r)=>n+(r.unitCost||0),0)/rows.length);
+   move({modelId:p.modelId,lotId:source.id,delta:-p.quantity,kind:'reclassificacao',unitCost:cost,reference:'Identificação de lote',notes:'Destino: '+p.lotCode});
+   move({modelId:p.modelId,lotId:target,delta:p.quantity,kind:'reclassificacao',unitCost:cost,reference:'Identificação de lote',notes:'Origem: '+source.code});
  }else if(name==='movement'){
    const m=await get('models',p.modelId);if(!m||m.archived)throw Error('Modelo não encontrado.');
    const book=new LotBook(db,scope,createdAt);
@@ -51,20 +54,24 @@ export async function action(scope:string,name:string,input:unknown,requestId:st
     move({modelId:m.id,lotId,delta:p.quantity,kind:'entrada',unitCost:p.unitCost,reference:p.reference,notes:p.notes});
     if(p.registerPayment&&p.unitCost>0)entry({type:'out',amount:p.quantity*p.unitCost,description:'Compra · '+m.name,category:'Fornecedor',payment:p.payment});
    }else{
-    const rows=await book.take(m.id,p.quantity,p.lotId);book.sync(m.id);batch.push(...book.statements);
-    for(const r of rows)move({modelId:m.id,lotId:r.lotId,delta:-r.quantity,kind:'saida',unitCost:r.unitCost,reference:p.reference,notes:p.notes});
+    const rows=await book.take(m.id,p.quantity,p.lotId,p.unitId,'out');book.sync(m.id);batch.push(...book.statements);
+    for(const r of rows)move({modelId:m.id,lotId:r.lotId,unitId:r.units.length===1?r.units[0].id:null,delta:-r.quantity,kind:'saida',unitCost:r.unitCost,reference:p.reference,notes:p.notes});
    }
  }else if(name==='sale'){
    const [m,c]=await Promise.all([get('models',p.modelId),get('customers',p.customerId)]);
    if(!m||m.archived||!c||c.archived)throw Error('Selecione um modelo e um cliente ativos.');
    if(m.stock<p.quantity)throw Error('Quantidade indisponível no estoque.');
    const total=p.quantity*p.unitPrice-p.discount,number='GP-'+date.replaceAll('-','').slice(2)+'-'+id.slice(0,5).toUpperCase();
-   const book=new LotBook(db,scope,createdAt),allocations=await book.take(m.id,p.quantity,p.lotId);book.sync(m.id);batch.push(...book.statements);
-   const {lotId:selectedLot,...fields}=p;
-   insert('sales',{...fields,id,scope,total,number,cost:allocations.reduce((n,r)=>n+r.quantity*r.unitCost,0),createdAt});
+   const book=new LotBook(db,scope,createdAt),allocations=await book.take(m.id,p.quantity,p.lotId,p.unitId,'sold');book.sync(m.id);batch.push(...book.statements);
+   const {lotId:selectedLot,unitId:selectedUnit,...fields}=p;
+   const units=allocations.flatMap(a=>a.units);
+   if(p.unitId){const u=units[0];if(u.chassis&&p.chassis&&p.chassis.trim().toUpperCase()!==u.chassis)throw Error('O chassi não corresponde à moto selecionada.');fields.chassis=u.chassis||p.chassis;if(!u.chassis&&p.chassis){const chassis=p.chassis.trim().toUpperCase();batch.push(stmt('UPDATE bikeUnits SET chassis=?,chassisKey=? WHERE id=? AND scope=?',chassis,chassis.replace(/[^A-Z0-9]/g,''),u.id,scope));u.chassis=chassis;}}
+   else if(!fields.chassis&&units.length===1)fields.chassis=units[0].chassis;
+   insert('sales',{...fields,id,scope,total,number,costKnown:units.every(u=>u.unitCost!==null)?1:0,cost:units.reduce((n,u)=>n+(u.unitCost||0),0),createdAt});
+   for(const u of units)insert('saleUnits',{id:crypto.randomUUID(),scope,saleId:id,unitId:u.id,modelId:m.id,lotId:u.lotId,chassis:u.chassis,condition:u.condition,unitCost:u.unitCost,createdAt});
    for(const r of allocations){
     insert('saleLots',{id:crypto.randomUUID(),scope,saleId:id,lotId:r.lotId,modelId:m.id,quantity:r.quantity,unitCost:r.unitCost,createdAt});
-    move({modelId:m.id,lotId:r.lotId,delta:-r.quantity,kind:'venda',unitCost:r.unitCost,reference:number,notes:p.chassis?'Chassi/série: '+p.chassis:''});
+    move({modelId:m.id,lotId:r.lotId,unitId:r.units.length===1?r.units[0].id:null,delta:-r.quantity,kind:'venda',unitCost:r.unitCost,reference:number,notes:p.chassis?'Chassi/série: '+p.chassis:''});
    }
    if(p.paid)entry({type:'in',amount:p.paid,description:'Venda '+number,category:'Venda',payment:p.payment,saleId:id});
  }else if(name==='payment'||name==='cancelSale'){
@@ -76,11 +83,10 @@ export async function action(scope:string,name:string,input:unknown,requestId:st
      entry({type:'in',amount:p.amount,description:'Recebimento '+s.number,category:'Venda',payment:p.payment,saleId:s.id});
    }else{
      batch.push(stmt("UPDATE sales SET status='cancelled',revision=CASE WHEN revision=? AND status='active' THEN revision+1 ELSE NULL END WHERE id=? AND scope=?",p.revision,p.id,scope));
-     const rows=(await db.prepare('SELECT * FROM saleLots WHERE scope=? AND saleId=?').bind(scope,s.id).all<any>()).results;
+     const individual=(await db.prepare('SELECT * FROM saleUnits WHERE scope=? AND saleId=?').bind(scope,s.id).all<any>()).results;
      const book=new LotBook(db,scope,createdAt),returns:any[]=[];
-     for(const r of rows.length?rows:[{quantity:s.quantity,unitCost:Math.round(s.cost/s.quantity),lotId:undefined}]){
-      const lotId=await book.restore(s.modelId,r.quantity,r.unitCost,r.lotId);returns.push({modelId:s.modelId,lotId,delta:r.quantity,kind:'estorno',unitCost:r.unitCost,reference:s.number,notes:'Venda cancelada'});
-     }
+     if(individual.length){for(const u of individual){book.restoreUnit(u);returns.push({modelId:s.modelId,lotId:u.lotId,unitId:u.unitId,delta:1,kind:'estorno',unitCost:u.unitCost??0,reference:s.number,notes:u.chassis||'Venda cancelada'});}}
+     else {const rows=(await db.prepare('SELECT * FROM saleLots WHERE scope=? AND saleId=?').bind(scope,s.id).all<any>()).results;for(const r of rows.length?rows:[{quantity:s.quantity,unitCost:Math.round(s.cost/s.quantity),lotId:undefined}]){const lotId=await book.restore(s.modelId,r.quantity,r.unitCost,r.lotId);returns.push({modelId:s.modelId,lotId,delta:r.quantity,kind:'estorno',unitCost:r.unitCost,reference:s.number,notes:'Venda anterior cancelada'});}}
      book.sync(s.modelId);batch.push(...book.statements);for(const returned of returns)move(returned);
      if(s.paid)entry({type:'out',amount:s.paid,description:'Estorno '+s.number,category:'Estorno',payment:s.payment,saleId:s.id});
    }

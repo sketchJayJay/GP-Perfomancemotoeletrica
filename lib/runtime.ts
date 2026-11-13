@@ -1,3 +1,5 @@
+import {ensureBikeUnits} from './bikes-runtime.ts';
+import {seedProvidedBikes} from './provided-bikes-server.ts';
 import {ensureLegacyStockLots} from './legacy-lots.ts';
 import {DatabaseSync,backup} from 'node:sqlite';
 import {mkdirSync,readdirSync,readFileSync,existsSync,chmodSync,renameSync,unlinkSync,statSync} from 'node:fs';
@@ -45,5 +47,7 @@ export async function openDatabase(){
   raw.exec('BEGIN IMMEDIATE');try{raw.exec(sql);raw.prepare('INSERT INTO app_migrations VALUES (?,?,?)').run(name,hash,new Date().toISOString());raw.exec('COMMIT');}catch(e){raw.exec('ROLLBACK');throw e;}
  }
  ensureLegacyStockLots(raw);
+ ensureBikeUnits(raw);
+ await seedProvidedBikes(env.DB,storeScope);
  return env.DB;
 }

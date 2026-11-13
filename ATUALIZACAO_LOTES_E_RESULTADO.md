@@ -28,7 +28,7 @@ Em entradas diretas no Estoque, informe o lote. No cadastro de um modelo com qua
 
 Na venda, selecione o modelo e o **Lote da moto**. Confira o código do lote da unidade física antes de confirmar. O sistema baixa apenas a quantidade daquele lote, conserva o custo de origem da venda e mostra o lote no histórico e no recibo.
 
-Cada venda feita pela tela usa o lote selecionado. Para vender unidades de lotes diferentes, registre as vendas separadamente e identifique o chassi/série de cada unidade no campo já disponível. A opção de quantidade não é um cadastro individual de chassis.
+A partir da versão 1.4, cada venda feita pela tela seleciona a moto individual pelo chassi, vinculada ao lote. Para vender várias unidades, registre cada moto separadamente. O cadastro individual, a condição nova/usada e as sete motos enviadas estão descritos em [ATUALIZACAO_LOTES_CHASSIS.md](ATUALIZACAO_LOTES_CHASSIS.md). Vendas antigas por quantidade permanecem no histórico.
 
 Se houver cancelamento, as unidades voltam aos mesmos lotes da venda. O sistema impede vender mais unidades do que o saldo do lote e protege contra pedidos duplicados e disputas simultâneas pelo estoque.
 

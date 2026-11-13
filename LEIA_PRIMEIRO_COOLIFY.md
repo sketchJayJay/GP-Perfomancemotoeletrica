@@ -1,5 +1,7 @@
 # GP Performance — instalação no Coolify
 
+**Versão 1.4:** este pacote inclui o cadastro inicial das sete motos enviadas, por R$ 8.000 cada, e estoque individual por chassi. Leia [ATUALIZACAO_LOTES_CHASSIS.md](ATUALIZACAO_LOTES_CHASSIS.md) para conferir os dados pendentes e a importação antes do deploy.
+
 ## Configuração rápida
 
 | Campo no Coolify | Valor |

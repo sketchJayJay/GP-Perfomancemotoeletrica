@@ -1,4 +1,4 @@
-# GP Performance — edição Coolify 1.3
+# GP Performance — edição Coolify 1.4
 
 Sistema de vendas de motos elétricas com estoque, entradas/saídas, modelos com fotos, clientes, vendas com desconto e pagamento parcial, financeiro com gastos das motos e contas a pagar, recibos para imprimir/salvar em PDF, exportações e aniversários via Z-API.
 
@@ -59,3 +59,7 @@ A versão 1.2 identifica os lotes até a venda, conserva o custo de cada saída 
 ## Despesas das motos e contas a pagar
 
 A versão 1.3 inclui gastos de compra, viagem, montagem e entrega por compra, lote ou venda, com favorecido, vencimento, pagamentos parciais e histórico. O resultado mensal inclui as despesas pela data do gasto, e o caixa registra os pagamentos sem duplicar o custo. Consulte [ATUALIZACAO_DESPESAS.md](ATUALIZACAO_DESPESAS.md).
+
+## Motos individuais, chassis e usadas
+
+A versão 1.4 permite criar o lote primeiro e adicionar cada moto dentro dele, com foto, chassi, condição nova/usada, preço e custo próprios. As sete motos enviadas acompanham o cadastro inicial a R$ 8.000 por unidade; o número real do lote, custos, condição e chassi da GMAX ficam a completar. A importação ocorre uma vez e pode ser desativada antes da primeira execução com SEED_GP_BIKES=0. Leia [ATUALIZACAO_LOTES_CHASSIS.md](ATUALIZACAO_LOTES_CHASSIS.md) antes de instalar.
