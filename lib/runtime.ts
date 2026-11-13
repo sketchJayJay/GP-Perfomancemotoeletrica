@@ -1,3 +1,4 @@
+import {ensureLegacyStockLots} from './legacy-lots.ts';
 import {DatabaseSync,backup} from 'node:sqlite';
 import {mkdirSync,readdirSync,readFileSync,existsSync,chmodSync,renameSync,unlinkSync,statSync} from 'node:fs';
 import {join,resolve} from 'node:path';
@@ -43,5 +44,6 @@ export async function openDatabase(){
   if(applied){if(applied.hash!==hash)throw Error('Uma migração já aplicada foi alterada: '+name);continue;}
   raw.exec('BEGIN IMMEDIATE');try{raw.exec(sql);raw.prepare('INSERT INTO app_migrations VALUES (?,?,?)').run(name,hash,new Date().toISOString());raw.exec('COMMIT');}catch(e){raw.exec('ROLLBACK');throw e;}
  }
+ ensureLegacyStockLots(raw);
  return env.DB;
 }

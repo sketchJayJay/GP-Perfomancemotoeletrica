@@ -1,4 +1,4 @@
-# GP Performance — edição Coolify
+# GP Performance — edição Coolify 1.2
 
 Sistema de vendas de motos elétricas com estoque, entradas/saídas, modelos com fotos, clientes, vendas com desconto e pagamento parcial, financeiro, recibos para imprimir/salvar em PDF, exportações e aniversários via Z-API.
 
@@ -47,3 +47,11 @@ O arquivo `package-lock.json` fixa as dependências. As migrações de `drizzle/
 A edição hospedada originalmente foi adaptada para um processo Node independente. Este pacote não contém credenciais, banco preenchido, cache de testes ou dependências de autenticação/hospedagem do ChatGPT. O agendador de aniversários e os backups executam no próprio servidor.
 
 Logo fornecida pelo cliente em `public/images/gp-logo.jpeg`. Hero gerado como conceito ilustrativo, sem representar modelo comercial ou especificação técnica.
+
+## Compras e lotes
+
+A versão 1.1 inclui a aba Compras. Consulte [ATUALIZACAO_COMPRAS.md](ATUALIZACAO_COMPRAS.md) para o fluxo e a atualização preservando os dados.
+
+## Lotes e resultado mensal
+
+A versão 1.2 identifica os lotes até a venda, conserva o custo de cada saída e inclui o resultado mensal em Financeiro. Consulte [ATUALIZACAO_LOTES_E_RESULTADO.md](ATUALIZACAO_LOTES_E_RESULTADO.md).
