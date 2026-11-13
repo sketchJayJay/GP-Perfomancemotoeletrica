@@ -1,3 +1,4 @@
+import {expenseStatements} from './expenses-server.ts';
 import {LotBook} from './lot-stock.ts';
 import {purchaseStatements} from './purchases-server.ts';
 import {env,scopeFor,Prepared} from './runtime.ts';
@@ -7,7 +8,7 @@ import { validate } from './validation.ts';
 export function database(){if(!env.DB)throw Error('Banco de dados indisponível. Tente novamente.');return env.DB;}
 export function assertOrigin(req:Request){const o=req.headers.get('origin');if(o&&o!==new URL(req.url).origin)throw Error('Origem da requisição inválida.');}
 export function providerReady(){return !!(env.ZAPI_INSTANCE_ID&&env.ZAPI_TOKEN&&env.ZAPI_CLIENT_TOKEN);}
-export async function readData(scope:string){const db=database();const tables=['models','customers','sales','movements','ledger','birthdayLogs','purchases','purchaseItems','stockLots','stockLotBalances','saleLots','settings'];const r=await db.batch(tables.map(t=>db.prepare(`SELECT * FROM ${t} WHERE scope = ?${t==='settings'?'':' ORDER BY createdAt DESC'}`).bind(scope)));const d:any={};tables.forEach((t,i)=>{d[t]=t==='settings'?(r[i].results[0]||defaultSettings):r[i].results;});d.providerReady=providerReady();return d;}
+export async function readData(scope:string){const db=database();const tables=['expenses','models','customers','sales','movements','ledger','birthdayLogs','purchases','purchaseItems','stockLots','stockLotBalances','saleLots','settings'];const r=await db.batch(tables.map(t=>db.prepare(`SELECT * FROM ${t} WHERE scope = ?${t==='settings'?'':' ORDER BY createdAt DESC'}`).bind(scope)));const d:any={};tables.forEach((t,i)=>{d[t]=t==='settings'?(r[i].results[0]||defaultSettings):r[i].results;});d.providerReady=providerReady();return d;}
 export async function action(scope:string,name:string,input:unknown,requestId:string){
  if(!/^[a-f0-9-]{36}$/.test(requestId))throw Error('Identificador da operação inválido. Atualize a página.');
  const p=validate(name,input),db=database(),id=crypto.randomUUID(),createdAt=new Date().toISOString(),date=p.date||today();
@@ -20,7 +21,8 @@ export async function action(scope:string,name:string,input:unknown,requestId:st
  const update=(table:string,obj:Record<string,any>,key:string)=>{const keys=Object.keys(obj);batch.push(stmt(`UPDATE ${table} SET ${keys.map(k=>k+'=?').join(',')} WHERE id=? AND scope=?`,...Object.values(obj),key,scope));};
  const move=(o:any)=>insert('movements',{id:crypto.randomUUID(),scope,createdAt,date,...o});
  const entry=(o:any)=>insert('ledger',{id:crypto.randomUUID(),scope,createdAt,date,...o});
- if(['purchase','receivePurchase','cancelPurchase'].includes(name)){batch.push(...await purchaseStatements(db,scope,name,p,id,createdAt,date));}
+ if(['expense','payExpense','cancelExpense'].includes(name)){batch.push(...await expenseStatements(db,scope,name,p,id,createdAt));}
+ else if(['purchase','receivePurchase','cancelPurchase'].includes(name)){batch.push(...await purchaseStatements(db,scope,name,p,id,createdAt,date));}
  else if(name==='model'){
    const {id:existing,initialStock,initialLotCode,...fields}=p;
    if(existing){const m=await get('models',existing);if(!m)throw Error('Modelo não encontrado.');if(m.stock>0&&m.cost!==p.cost)throw Error('O custo do estoque é calculado pelos lotes. Confira o custo na compra ou entrada.');update('models',fields,existing);}

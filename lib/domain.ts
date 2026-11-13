@@ -1,3 +1,4 @@
+import {demoExpenseAction} from './expenses-domain.ts';
 import {seedDemoLots,demoLot,demoLotAdd,demoLotTake} from './lots-demo.ts';
 export {seedDemoLots} from './lots-demo.ts';
 import {demoPurchaseAction} from './purchases-domain.ts';
@@ -5,7 +6,8 @@ export type Model={id:string;name:string;brand:string;power:string;rangeKm:numbe
 export type Customer={id:string;name:string;phone:string;document:string;birthday:string;email:string;city:string;address:string;notes:string;consent:number;archived:number;createdAt:string};
 export type Sale={id:string;number:string;customerId:string;modelId:string;quantity:number;unitPrice:number;cost:number;discount:number;total:number;paid:number;payment:string;dueDate:string;date:string;status:string;chassis:string;notes:string;revision:number;createdAt:string};
 export type Movement={lotId?:string|null;id:string;modelId:string;delta:number;kind:string;unitCost:number;reference:string;notes:string;date:string;createdAt:string};
-export type Entry={id:string;type:string;amount:number;description:string;category:string;payment:string;saleId?:string|null;date:string;createdAt:string};
+export type Expense={id:string;description:string;category:string;payee:string;purchaseId?:string|null;lotId?:string|null;saleId?:string|null;quantity:number;unitAmount:number;amount:number;paid:number;date:string;dueDate:string;notes:string;status:string;revision:number;createdAt:string};
+export type Entry={expenseId?:string|null;id:string;type:string;amount:number;description:string;category:string;payment:string;saleId?:string|null;date:string;createdAt:string};
 export type Settings={storeName:string;phone:string;document:string;address:string;monthlyGoal:number;birthdayEnabled:number;birthdayTemplate:string};
 export type BirthdayLog={id:string;customerId:string;year:number;status:string;message:string;providerId:string;createdAt:string};
 export type Purchase={lotCode:string;id:string;number:string;date:string;supplier:string;buyer:string;carrier:string;expectedDate:string;freight:number;total:number;status:'planned'|'purchased'|'in_transit'|'received'|'cancelled';notes:string;receivedDate:string;revision:number;createdAt:string};
@@ -13,9 +15,9 @@ export type PurchaseItem={id:string;purchaseId:string;modelId:string;quantity:nu
 export type StockLot={id:string;code:string;purchaseId?:string|null;supplier:string;receivedDate:string;notes:string;createdAt:string};
 export type LotBalance={id:string;lotId:string;modelId:string;quantity:number;unitCost:number;revision:number;createdAt:string};
 export type SaleLot={id:string;saleId:string;lotId:string;modelId:string;quantity:number;unitCost:number;createdAt:string};
-export type Data={stockLots:StockLot[];stockLotBalances:LotBalance[];saleLots:SaleLot[];purchases:Purchase[];purchaseItems:PurchaseItem[];models:Model[];customers:Customer[];sales:Sale[];movements:Movement[];ledger:Entry[];settings:Settings;birthdayLogs:BirthdayLog[];providerReady:boolean};
+export type Data={expenses:Expense[];stockLots:StockLot[];stockLotBalances:LotBalance[];saleLots:SaleLot[];purchases:Purchase[];purchaseItems:PurchaseItem[];models:Model[];customers:Customer[];sales:Sale[];movements:Movement[];ledger:Entry[];settings:Settings;birthdayLogs:BirthdayLog[];providerReady:boolean};
 export const defaultSettings:Settings={storeName:'GP Performance',phone:'',document:'',address:'',monthlyGoal:10000000,birthdayEnabled:0,birthdayTemplate:'Olá, {nome}! 🎉 A equipe {loja} deseja um feliz aniversário! Que seu novo ciclo venha cheio de energia e bons caminhos. Conte com a gente! ⚡🏍️'};
-export const emptyData=():Data=>({stockLots:[],stockLotBalances:[],saleLots:[],purchases:[],purchaseItems:[],models:[],customers:[],sales:[],movements:[],ledger:[],settings:{...defaultSettings},birthdayLogs:[],providerReady:false});
+export const emptyData=():Data=>({expenses:[],stockLots:[],stockLotBalances:[],saleLots:[],purchases:[],purchaseItems:[],models:[],customers:[],sales:[],movements:[],ledger:[],settings:{...defaultSettings},birthdayLogs:[],providerReady:false});
 export const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:2}).format(n/100);
 export const dateLabel=(d:string)=>d?new Date(d.slice(0,10)+'T12:00:00').toLocaleDateString('pt-BR'):'—';
@@ -33,6 +35,7 @@ export function demoData():Data {
 }
 export function demoAction(data:Data,action:string,p:any):Data {
  const d=seedDemoLots(structuredClone(data)),id=crypto.randomUUID(),createdAt=new Date().toISOString(),date=p.date||today();
+ if(['expense','payExpense','cancelExpense'].includes(action))return demoExpenseAction(d,action,p,id,createdAt,date);
  if(['purchase','receivePurchase','cancelPurchase'].includes(action))return demoPurchaseAction(d,action,p,id,createdAt,date);
  if(action==='model'){const found=d.models.find(m=>m.id===p.id);if(found)Object.assign(found,p);else{d.models.unshift({...p,id,archived:0,stock:p.initialStock||0,createdAt});if(p.initialStock){const lotId=demoLot(d,p.initialLotCode||'INICIAL-'+id.slice(0,8),createdAt,{receivedDate:date});demoLotAdd(d,lotId,id,p.initialStock,p.cost,createdAt);d.movements.unshift({id:crypto.randomUUID(),modelId:id,lotId,delta:p.initialStock,kind:'entrada',unitCost:p.cost,reference:'Estoque inicial',notes:'',date,createdAt});}}}
  else if(action==='customer'){const found=d.customers.find(c=>c.id===p.id);if(found)Object.assign(found,p);else d.customers.unshift({...p,id,archived:0,createdAt});}

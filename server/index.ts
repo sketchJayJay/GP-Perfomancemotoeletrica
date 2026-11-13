@@ -19,7 +19,7 @@ export async function startServer(){
    const base=publicUrl||`${protocol}://${host}`,url=new URL(incoming.url||'/',base);if(url.origin!==base)throw Error('Endereço inválido.');
    const headers=new Headers();for(const [key,value] of Object.entries(incoming.headers))if(value!==undefined)headers.set(key,Array.isArray(value)?value.join(', '):value);
    const req=new Request(url,{method:incoming.method,headers}),secure=base.startsWith('https://'),path=url.pathname;
-   if(path==='/api/health'&&incoming.method==='GET'){env.DB!.raw.prepare('SELECT 1').get();send(200,{status:'ok',app:'GP Performance',version:'1.2.0'});return;}
+   if(path==='/api/health'&&incoming.method==='GET'){env.DB!.raw.prepare('SELECT 1').get();send(200,{status:'ok',app:'GP Performance',version:'1.3.0'});return;}
    if(!path.startsWith('/api/')){
     if(incoming.method!=='GET'&&incoming.method!=='HEAD'){send(405,{error:'Método não permitido.'});return;}
     let requested=resolve(dist,'.'+decodeURIComponent(path));if(requested!==dist&&!requested.startsWith(dist+sep)){send(404,{error:'Não encontrado.'});return;}

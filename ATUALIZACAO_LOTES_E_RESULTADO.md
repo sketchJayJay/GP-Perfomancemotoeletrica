@@ -1,5 +1,7 @@
 # GP Performance 1.2 — Lotes até a venda e resultado mensal
 
+**Atualização 1.3:** o controle de gastos das motos e contas a pagar foi ampliado. Novas despesas entram no resultado pela data do gasto, inclusive valores ainda a pagar, sem duplicar o pagamento do caixa. Consulte [ATUALIZACAO_DESPESAS.md](ATUALIZACAO_DESPESAS.md) para o fluxo atual.
+
 ## Identificar o lote na compra
 
 Em **Compras → Nova compra**, informe **Número do lote**, por exemplo `LOTE 001`, `LOTE 002` ou um código do fornecedor. Esse código acompanha as unidades do lote após o recebimento, nas movimentações, na venda e no recibo.
@@ -44,14 +46,14 @@ Em **Financeiro → Resultado mensal**, escolha o mês. O relatório mostra:
 
 1. Vendas ativas pela data da venda, incluindo o total das vendas parcialmente recebidas.
 2. Custo das motos vendidas, usando o custo registrado no lote no momento da venda. Alterações futuras do estoque não reescrevem esse custo histórico.
-3. Despesas operacionais pagas no mês, lançadas no caixa.
+3. Despesas operacionais: lançamentos avulsos pela data do caixa e, a partir da versão 1.3, novas despesas pela data do gasto, incluindo a parte a pagar.
 4. Resultado gerencial: **vendas − custo das motos vendidas − despesas operacionais**.
 
 Compras de estoque classificadas como **Fornecedor** não são subtraídas novamente como despesa operacional, porque o custo das motos é reconhecido na venda. O frete da compra já faz parte do custo do lote. Cancelamentos são desconsiderados nas vendas e no custo; o estorno do caixa não é descontado outra vez no resultado. Retiradas do proprietário aparecem separadas no caixa.
 
 O relatório também mostra entradas efetivamente recebidas, saídas pagas e saldo de caixa do mês. Esses valores podem ser diferentes do resultado, por causa de parcelas a receber, compras de estoque, aportes e retiradas.
 
-Cadastre aluguel, salários, energia, impostos pagos e demais gastos em **Novo lançamento**, usando uma categoria operacional. Sem os gastos lançados, o resultado não contempla essas despesas. É possível exportar o relatório do mês em CSV.
+Cadastre aluguel, salários, energia, impostos pagos e demais gastos em **Nova despesa**, usando uma categoria apropriada. Lançamentos avulsos pagos também podem ser registrados no caixa, sem duplicar uma despesa já cadastrada. Sem os gastos lançados, o resultado não contempla essas despesas. É possível exportar o relatório do mês em CSV.
 
 ## Atualizar no Coolify
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {expenseCategories} from './expenses-domain.ts';
 const text=z.string().trim().max(1000),short=z.string().trim().max(160),id=z.string().min(1).max(80);
 const cents=z.number().int().min(0).max(10000000000),qty=z.number().int().min(1).max(10000);
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(d=>!isNaN(+new Date(d+'T12:00:00'))&&new Date(d+'T12:00:00Z').toISOString().slice(0,10)===d,'Data inválida');
@@ -6,7 +7,21 @@ const optionalDate=z.union([date,z.literal('')]);
 const payment=z.enum(['Pix','Dinheiro','Cartão de crédito','Cartão de débito','Transferência','Financiamento','Outro']);
 const purchaseItems=z.array(z.object({modelId:id,quantity:qty,unitCost:cents})).min(1,'Adicione ao menos um modelo ao lote').max(100).refine(items=>new Set(items.map(i=>i.modelId)).size===items.length,'Coloque cada modelo em uma única linha');
 const lotCode=z.string().trim().max(80).transform(s=>s.toUpperCase());
+const linkId=z.union([id,z.literal('')]).nullable().optional().transform(v=>v||null);
+const expenseSchema=z.object({id:id.optional(),revision:z.number().int().min(0).optional(),description:short.min(2,'Descreva a despesa'),category:z.enum(expenseCategories),payee:short,purchaseId:linkId,lotId:linkId,saleId:linkId,quantity:qty,unitAmount:cents.refine(n=>n>0,'Informe o valor da despesa'),paid:cents.default(0),date,dueDate:optionalDate,notes:text,payment,paymentDate:optionalDate.default('')}).superRefine((p,ctx)=>{
+ const fail=(message:string)=>ctx.addIssue({code:z.ZodIssueCode.custom,message});
+ if(p.id&&p.revision===undefined)fail('Atualize a despesa antes de editar');
+ if([p.purchaseId,p.lotId,p.saleId].filter(Boolean).length>1)fail('Vincule a despesa a uma compra, lote ou venda');
+ const total=p.quantity*p.unitAmount;
+ if(total>10000000000)fail('Valor total da despesa acima do permitido');
+ if(p.paid>total)fail('Pagamento superior ao total da despesa');
+ if(p.paid<total&&!p.dueDate)fail('Informe o vencimento do saldo a pagar');
+ if(p.paid>0&&!p.paymentDate)fail('Informe a data do pagamento');
+});
 export const schemas={
+ expense:expenseSchema,
+ payExpense:z.object({id,revision:z.number().int().min(0),amount:cents.refine(n=>n>0,'Informe um valor maior que zero'),payment,date}),
+ cancelExpense:z.object({id,revision:z.number().int().min(0)}),
  assignLot:z.object({modelId:id,fromLotId:id,quantity:qty,lotCode:lotCode.refine(s=>s.length>0,'Informe o lote de destino'),date}),
  purchase:z.object({id:id.optional(),revision:z.number().int().min(0).optional(),lotCode:lotCode.default(''),date,supplier:short.min(2,'Informe o fornecedor'),buyer:short,carrier:short,expectedDate:optionalDate,freight:cents,status:z.enum(['planned','purchased','in_transit']),notes:text,items:purchaseItems}).refine(p=>!p.id||p.revision!==undefined,'Atualize a compra antes de editar'),
  receivePurchase:z.object({id,revision:z.number().int().min(0),date,registerPayment:z.boolean(),payment}),
