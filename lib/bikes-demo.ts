@@ -3,12 +3,12 @@ import {chassisKey,syncDemoModel} from './bikes-domain.ts';
 import {demoLotAdd,demoBalance} from './lots-demo.ts';
 export function demoBikeAction(d:Data,action:string,p:any,id:string,createdAt:string,date:string){
  if(action==='stockLot'){
-  const found=d.stockLots.find(l=>l.id===p.id);if(p.id&&(!found||(found.revision||0)!==p.revision))throw Error('Lote alterado. Atualize a página.');
+  const found=d.stockLots.find(l=>l.id===p.id);if(p.id&&(!found||found.deletedAt||(found.revision||0)!==p.revision))throw Error('Lote alterado. Atualize a página.');
   if(d.stockLots.some(l=>l.id!==p.id&&l.code===p.code))throw Error('Já existe um lote com esse número.');
   if(found)Object.assign(found,p,{revision:(found.revision||0)+1});else d.stockLots.unshift({...p,id,revision:0,createdAt});return d;
  }
  const found=d.bikeUnits.find(u=>u.id===p.id);if(p.id&&(!found||found.revision!==p.revision))throw Error('Moto alterada. Atualize a página.');
- if(!d.stockLots.some(l=>l.id===p.lotId))throw Error('Lote não encontrado.');
+ if(!d.stockLots.some(l=>l.id===p.lotId&&!l.deletedAt))throw Error('Lote não encontrado.');
  if(p.chassis&&d.bikeUnits.some(u=>u.id!==p.id&&chassisKey(u.chassis)===chassisKey(p.chassis)))throw Error('Já existe uma moto com esse chassi.');
  let modelId=found?.modelId||p.modelId;
  if(!modelId){modelId=crypto.randomUUID();d.models.unshift({id:modelId,...p.newModel,power:'',rangeKm:0,battery:'',cost:p.unitCost||0,price:p.price,stock:0,minStock:0,image:p.image,archived:0,createdAt});}

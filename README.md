@@ -1,4 +1,4 @@
-# GP Performance — edição Coolify 1.4
+# GP Performance — edição Coolify 1.5.0
 
 Sistema de vendas de motos elétricas com estoque, entradas/saídas, modelos com fotos, clientes, vendas com desconto e pagamento parcial, financeiro com gastos das motos e contas a pagar, recibos para imprimir/salvar em PDF, exportações e aniversários via Z-API.
 
@@ -63,3 +63,11 @@ A versão 1.3 inclui gastos de compra, viagem, montagem e entrega por compra, lo
 ## Motos individuais, chassis e usadas
 
 A versão 1.4 permite criar o lote primeiro e adicionar cada moto dentro dele, com foto, chassi, condição nova/usada, preço e custo próprios. As sete motos enviadas acompanham o cadastro inicial a R$ 8.000 por unidade; o número real do lote, custos, condição e chassi da GMAX ficam a completar. A importação ocorre uma vez e pode ser desativada antes da primeira execução com SEED_GP_BIKES=0. Leia [ATUALIZACAO_LOTES_CHASSIS.md](ATUALIZACAO_LOTES_CHASSIS.md) antes de instalar.
+
+## Excluir e restaurar lotes
+
+A versão 1.4.1 adiciona **Excluir lote** no cartão e nos detalhes do lote. A exclusão retira do estoque as motos disponíveis daquele lote, mantém chassis, fotos e histórico e permite restaurar pela guia **Excluídos**. Lotes com venda ativa ficam protegidos. Consulte [ATUALIZACAO_EXCLUIR_LOTE.md](ATUALIZACAO_EXCLUIR_LOTE.md).
+
+## Lucro por moto e comissões
+
+A versão 1.5 inclui despesas e várias comissões na própria venda, prévia do lucro, resumo interno detalhado e relatório **Financeiro → Lucro por moto**, com filtro por mês e exportação. Também permite vincular gastos diretamente ao chassi. Gastos comuns da compra/lote são rateados em centavos e acompanham as motos identificadas no lançamento; o frete da compra, já presente no custo, não é descontado novamente. Consulte [ATUALIZACAO_LUCRO_POR_MOTO.md](ATUALIZACAO_LUCRO_POR_MOTO.md).

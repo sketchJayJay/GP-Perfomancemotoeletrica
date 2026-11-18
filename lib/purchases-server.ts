@@ -25,13 +25,15 @@ export async function purchaseStatements(db:Database,scope:string,action:string,
   const costs=landedCosts(items,order.freight);
   statements.push(stmt("UPDATE purchases SET status='received',receivedDate=?,revision=CASE WHEN revision=? AND status NOT IN ('received','cancelled') THEN revision+1 ELSE NULL END WHERE id=? AND scope=?",date,p.revision,p.id,scope));
   const book=new LotBook(db,scope,createdAt),lotId=await book.lot(order.lotCode||order.number,{purchaseId:order.id,supplier:order.supplier,receivedDate:date});
-  const moves:any[]=[];
+  const moves:any[]=[],receivedUnitIds:string[]=[];
   for(const [index,item] of items.entries()){
    if(!await stmt('SELECT id FROM models WHERE id=? AND scope=?',item.modelId,scope).first())throw Error('Modelo do lote não encontrado.');
-   await book.add(lotId,item.modelId,item.quantity,costs[index].unitCost);book.sync(item.modelId);
+   receivedUnitIds.push(...await book.add(lotId,item.modelId,item.quantity,costs[index].unitCost));book.sync(item.modelId);
    moves.push({id:crypto.randomUUID(),scope,lotId,modelId:item.modelId,delta:item.quantity,kind:'entrada',unitCost:costs[index].unitCost,reference:order.number,notes:'Recebimento do lote · '+order.supplier,date,createdAt});
   }
-  statements.push(...book.statements);for(const row of moves)insert('movements',row);
+  statements.push(...book.statements);
+  statements.push(stmt("UPDATE expenses SET allocationUnits=? WHERE scope=? AND allocationUnits='' AND (purchaseId=? OR lotId=?)",JSON.stringify(receivedUnitIds.sort()),scope,order.id,lotId));
+  for(const row of moves)insert('movements',row);
   if(p.registerPayment&&order.total>0)insert('ledger',{id:crypto.randomUUID(),scope,type:'out',amount:order.total,description:'Compra '+order.number+' · '+order.supplier,category:'Fornecedor',payment:p.payment,date,createdAt});
  }
  return statements;

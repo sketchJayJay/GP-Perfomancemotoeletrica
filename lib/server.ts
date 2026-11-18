@@ -1,5 +1,8 @@
+import {lotExclusionStatements} from './lot-exclusion-server.ts';
 import {bikeStatements} from './bikes-server.ts';
-import {expenseStatements} from './expenses-server.ts';
+import {expenseStatements,insertExpenseStatements} from './expenses-server.ts';
+import {freezeSaleExpenseAllocations} from './expense-allocation-server.ts';
+import {saleExpenseFields} from './sale-expenses.ts';
 import {LotBook} from './lot-stock.ts';
 import {purchaseStatements} from './purchases-server.ts';
 import {env,scopeFor,Prepared} from './runtime.ts';
@@ -22,7 +25,8 @@ export async function action(scope:string,name:string,input:unknown,requestId:st
  const update=(table:string,obj:Record<string,any>,key:string)=>{const keys=Object.keys(obj);batch.push(stmt(`UPDATE ${table} SET ${keys.map(k=>k+'=?').join(',')} WHERE id=? AND scope=?`,...Object.values(obj),key,scope));};
  const move=(o:any)=>insert('movements',{id:crypto.randomUUID(),scope,createdAt,date,...o});
  const entry=(o:any)=>insert('ledger',{id:crypto.randomUUID(),scope,createdAt,date,...o});
- if(['stockLot','stockUnit'].includes(name)){batch.push(...await bikeStatements(db,scope,name,p,id,createdAt,date));}
+ if(['deleteLot','restoreLot'].includes(name)){batch.push(...await lotExclusionStatements(db,scope,name,p,createdAt,date));}
+ else if(['stockLot','stockUnit'].includes(name)){batch.push(...await bikeStatements(db,scope,name,p,id,createdAt,date));}
  else if(['expense','payExpense','cancelExpense'].includes(name)){batch.push(...await expenseStatements(db,scope,name,p,id,createdAt));}
  else if(['purchase','receivePurchase','cancelPurchase'].includes(name)){batch.push(...await purchaseStatements(db,scope,name,p,id,createdAt,date));}
  else if(name==='model'){
@@ -63,7 +67,7 @@ export async function action(scope:string,name:string,input:unknown,requestId:st
    if(m.stock<p.quantity)throw Error('Quantidade indisponível no estoque.');
    const total=p.quantity*p.unitPrice-p.discount,number='GP-'+date.replaceAll('-','').slice(2)+'-'+id.slice(0,5).toUpperCase();
    const book=new LotBook(db,scope,createdAt),allocations=await book.take(m.id,p.quantity,p.lotId,p.unitId,'sold');book.sync(m.id);batch.push(...book.statements);
-   const {lotId:selectedLot,unitId:selectedUnit,...fields}=p;
+   const {lotId:selectedLot,unitId:selectedUnit,expenses:saleExpenses,...fields}=p;
    const units=allocations.flatMap(a=>a.units);
    if(p.unitId){const u=units[0];if(u.chassis&&p.chassis&&p.chassis.trim().toUpperCase()!==u.chassis)throw Error('O chassi não corresponde à moto selecionada.');fields.chassis=u.chassis||p.chassis;if(!u.chassis&&p.chassis){const chassis=p.chassis.trim().toUpperCase();batch.push(stmt('UPDATE bikeUnits SET chassis=?,chassisKey=? WHERE id=? AND scope=?',chassis,chassis.replace(/[^A-Z0-9]/g,''),u.id,scope));u.chassis=chassis;}}
    else if(!fields.chassis&&units.length===1)fields.chassis=units[0].chassis;
@@ -73,6 +77,8 @@ export async function action(scope:string,name:string,input:unknown,requestId:st
     insert('saleLots',{id:crypto.randomUUID(),scope,saleId:id,lotId:r.lotId,modelId:m.id,quantity:r.quantity,unitCost:r.unitCost,createdAt});
     move({modelId:m.id,lotId:r.lotId,unitId:r.units.length===1?r.units[0].id:null,delta:-r.quantity,kind:'venda',unitCost:r.unitCost,reference:number,notes:p.chassis?'Chassi/série: '+p.chassis:''});
    }
+   batch.push(...await freezeSaleExpenseAllocations(db,scope,units.map(u=>u.id)));
+   for(const e of saleExpenses)batch.push(...insertExpenseStatements(db,scope,saleExpenseFields(e,id,date),crypto.randomUUID(),createdAt,JSON.stringify(units.map(u=>u.id).sort())));
    if(p.paid)entry({type:'in',amount:p.paid,description:'Venda '+number,category:'Venda',payment:p.payment,saleId:id});
  }else if(name==='payment'||name==='cancelSale'){
    const s=await get('sales',p.id);if(!s||s.status!=='active')throw Error('Venda indisponível ou já cancelada.');

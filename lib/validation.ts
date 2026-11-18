@@ -8,10 +8,11 @@ const payment=z.enum(['Pix','Dinheiro','Cartão de crédito','Cartão de débito
 const purchaseItems=z.array(z.object({modelId:id,quantity:qty,unitCost:cents})).min(1,'Adicione ao menos um modelo ao lote').max(100).refine(items=>new Set(items.map(i=>i.modelId)).size===items.length,'Coloque cada modelo em uma única linha');
 const lotCode=z.string().trim().max(80).transform(s=>s.toUpperCase());
 const linkId=z.union([id,z.literal('')]).nullable().optional().transform(v=>v||null);
-const expenseSchema=z.object({id:id.optional(),revision:z.number().int().min(0).optional(),description:short.min(2,'Descreva a despesa'),category:z.enum(expenseCategories),payee:short,purchaseId:linkId,lotId:linkId,saleId:linkId,quantity:qty,unitAmount:cents.refine(n=>n>0,'Informe o valor da despesa'),paid:cents.default(0),date,dueDate:optionalDate,notes:text,payment,paymentDate:optionalDate.default('')}).superRefine((p,ctx)=>{
+const expenseSchema=z.object({id:id.optional(),revision:z.number().int().min(0).optional(),description:short.min(2,'Descreva a despesa'),category:z.enum(expenseCategories),payee:short,purchaseId:linkId,lotId:linkId,saleId:linkId,unitId:linkId,quantity:qty,unitAmount:cents.refine(n=>n>0,'Informe o valor da despesa'),paid:cents.default(0),date,dueDate:optionalDate,notes:text,payment,paymentDate:optionalDate.default('')}).superRefine((p,ctx)=>{
  const fail=(message:string)=>ctx.addIssue({code:z.ZodIssueCode.custom,message});
  if(p.id&&p.revision===undefined)fail('Atualize a despesa antes de editar');
- if([p.purchaseId,p.lotId,p.saleId].filter(Boolean).length>1)fail('Vincule a despesa a uma compra, lote ou venda');
+ if([p.purchaseId,p.lotId,p.saleId,p.unitId].filter(Boolean).length>1)fail('Vincule a despesa a uma compra, lote, moto ou venda');
+ if(p.category==='Comissão'&&!p.payee)fail('Informe o funcionário que receberá a comissão');
  const total=p.quantity*p.unitAmount;
  if(total>10000000000)fail('Valor total da despesa acima do permitido');
  if(p.paid>total)fail('Pagamento superior ao total da despesa');
@@ -20,7 +21,16 @@ const expenseSchema=z.object({id:id.optional(),revision:z.number().int().min(0).
 });
 const image=z.string().max(500000).refine(s=>!s||/^data:image\/(jpeg|png|webp);base64,/.test(s)||s.startsWith('https://')||/^\/images\/catalogo\/[a-z0-9-]+\.jpg$/.test(s),'Use uma imagem válida');
 const chassis=z.string().trim().max(80).transform(s=>s.toUpperCase()).refine(s=>/^[A-Z0-9 ._\/-]*$/.test(s),'Use letras, números, espaços ou hífen no chassi');
+const saleExpenseSchema=z.object({description:short.min(2,'Descreva a despesa'),category:z.enum(expenseCategories),payee:short,amount:cents.refine(n=>n>0,'Informe o valor da despesa'),paid:cents,dueDate:optionalDate,payment,paymentDate:optionalDate,notes:text.default('')}).superRefine((p,ctx)=>{
+ const fail=(message:string)=>ctx.addIssue({code:z.ZodIssueCode.custom,message});
+ if(p.category==='Comissão'&&!p.payee)fail('Informe o funcionário de cada comissão');
+ if(p.paid>p.amount)fail('Pagamento superior à despesa');
+ if(p.paid<p.amount&&!p.dueDate)fail('Informe o vencimento da despesa a pagar');
+ if(p.paid>0&&!p.paymentDate)fail('Informe a data de pagamento da despesa');
+});
 export const schemas={
+ deleteLot:z.object({id,revision:z.number().int().min(0)}),
+ restoreLot:z.object({id,revision:z.number().int().min(0)}),
  stockLot:z.object({id:id.optional(),revision:z.number().int().min(0).optional(),code:lotCode.refine(s=>s.length>0,'Informe o número do lote'),supplier:short.default(''),carrier:short.default(''),receivedDate:optionalDate,notes:text}).refine(p=>!p.id||p.revision!==undefined,'Atualize o lote antes de editar'),
  stockUnit:z.object({id:id.optional(),revision:z.number().int().min(0).optional(),lotId:id,modelId:id.optional(),newModel:z.object({name:short.min(2),brand:short.default(''),color:short.min(2)}).optional(),chassis,condition:z.enum(['new','used','unknown']),price:cents,unitCost:cents.nullable(),image,odometer:z.number().int().min(0).max(10000000).nullable(),year:z.number().int().min(1900).max(2100).nullable(),date:optionalDate,notes:text,registerPayment:z.boolean().default(false),payment}).refine(p=>!!p.modelId!==!!p.newModel,'Selecione um modelo ou cadastre um novo').refine(p=>!p.id||p.revision!==undefined,'Atualize a moto antes de editar').refine(p=>!p.registerPayment||(!p.id&&p.unitCost!==null),'Informe o custo para registrar a compra no caixa'),
  expense:expenseSchema,
@@ -33,7 +43,7 @@ export const schemas={
  model:z.object({id:id.optional(),name:short.min(2,'Informe o nome do modelo'),brand:short,power:short,rangeKm:z.number().int().min(0).max(5000),battery:short,color:short,cost:cents,price:cents,minStock:z.number().int().min(0).max(10000),initialLotCode:lotCode.optional(),initialStock:z.number().int().min(0).max(10000).optional(),image}),
  customer:z.object({id:id.optional(),name:short.min(2,'Informe o nome do cliente'),phone:short.refine(s=>!s||/^(\d{10,13})$/.test(s.replace(/\D/g,'')),'WhatsApp inválido'),document:short,birthday:optionalDate,email:z.union([z.string().email('E-mail inválido').max(160),z.literal('')]),city:short,address:text,notes:text,consent:z.number().int().min(0).max(1)}),
  movement:z.object({unitId:id.optional(),lotId:id.optional(),lotCode:lotCode.optional(),modelId:id,kind:z.enum(['entrada','saida']),quantity:qty,unitCost:cents,reference:short,notes:text,date,registerPayment:z.boolean(),payment}),
- sale:z.object({unitId:id.optional(),lotId:id.optional(),customerId:id,modelId:id,quantity:qty,unitPrice:cents,discount:cents,paid:cents,payment,dueDate:optionalDate,date,chassis:short,notes:text}).refine(s=>s.discount<=s.unitPrice*s.quantity,'Desconto superior ao total').refine(s=>s.paid<=s.unitPrice*s.quantity-s.discount,'Recebimento superior ao total').refine(s=>s.paid===s.unitPrice*s.quantity-s.discount||!!s.dueDate,'Informe o vencimento do saldo'),
+ sale:z.object({unitId:id.optional(),lotId:id.optional(),customerId:id,modelId:id,quantity:qty,unitPrice:cents,discount:cents,paid:cents,payment,dueDate:optionalDate,date,chassis:short,notes:text,expenses:z.array(saleExpenseSchema).max(40,'Use até 40 despesas por venda').default([])}).refine(s=>s.expenses.reduce((n,e)=>n+e.amount,0)<=10000000000,'Total das despesas acima do permitido').refine(s=>s.discount<=s.unitPrice*s.quantity,'Desconto superior ao total').refine(s=>s.paid<=s.unitPrice*s.quantity-s.discount,'Recebimento superior ao total').refine(s=>s.paid===s.unitPrice*s.quantity-s.discount||!!s.dueDate,'Informe o vencimento do saldo'),
  payment:z.object({id,revision:z.number().int(),amount:cents.refine(n=>n>0,'Informe o valor recebido'),payment,date}),
  cancelSale:z.object({id,revision:z.number().int()}),archiveModel:z.object({id}),archiveCustomer:z.object({id}),
  entry:z.object({type:z.enum(['in','out']),amount:cents.refine(n=>n>0,'Informe um valor maior que zero'),description:short.min(2),category:short.min(2),payment,date}),

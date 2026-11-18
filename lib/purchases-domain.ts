@@ -1,3 +1,4 @@
+import {expenseUnitIds} from './sale-profit.ts';
 import {demoLot,demoLotAdd} from './lots-demo.ts';
 import type {Data,PurchaseItem} from './domain.ts';
 export const purchaseLabels={planned:'Em compra',purchased:'Comprada',in_transit:'Em transporte',received:'Recebida',cancelled:'Cancelada'};
@@ -29,6 +30,7 @@ export function demoPurchaseAction(d:Data,action:string,p:any,id:string,createdA
    d.movements.unshift({id:crypto.randomUUID(),modelId:i.modelId,lotId,delta:i.quantity,kind:'entrada',unitCost:costs[index].unitCost,reference:order.number,notes:'Recebimento do lote · '+order.supplier,date,createdAt});
   }
   order.status='received';order.receivedDate=date;
+  for(const e of d.expenses.filter(e=>!e.allocationUnits&&(e.purchaseId===order.id||e.lotId===lotId)))e.allocationUnits=JSON.stringify(expenseUnitIds(d,e));
   if(p.registerPayment&&order.total>0)d.ledger.unshift({id:crypto.randomUUID(),type:'out',amount:order.total,description:'Compra '+order.number+' · '+order.supplier,category:'Fornecedor',payment:p.payment,date,createdAt});
  }
  return d;

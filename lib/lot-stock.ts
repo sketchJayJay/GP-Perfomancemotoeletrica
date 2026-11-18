@@ -9,10 +9,10 @@ export class LotBook {
  async lot(code:string,fields:{purchaseId?:string;supplier?:string;receivedDate?:string;notes?:string}={}){
   code=code.trim().toUpperCase();if(!code)throw Error('Informe o número do lote.');
   const lot=await this.stmt('SELECT * FROM stockLots WHERE scope=? AND code=? COLLATE NOCASE',this.scope,code).first<any>();
-  if(lot){if(fields.purchaseId&&lot.purchaseId!==fields.purchaseId)throw Error('Este número de lote já está em uso. Escolha outro número.');return lot.id as string;}
+  if(lot){if(lot.deletedAt)throw Error('Este lote foi excluído. Restaure-o antes de adicionar motos.');if(fields.purchaseId&&lot.purchaseId!==fields.purchaseId)throw Error('Este número de lote já está em uso. Escolha outro número.');return lot.id as string;}
   const id=crypto.randomUUID();this.append('INSERT INTO stockLots (id,scope,code,purchaseId,supplier,receivedDate,notes,createdAt) VALUES (?,?,?,?,?,?,?,?)',id,this.scope,code,fields.purchaseId||null,fields.supplier||'',fields.receivedDate||'',fields.notes||'',this.createdAt);return id;
  }
- balance(lotId:string,modelId:string){this.append('INSERT OR IGNORE INTO stockLotBalances(id,scope,lotId,modelId,quantity,unitCost,createdAt) VALUES (?,?,?,?,0,0,?)',crypto.randomUUID(),this.scope,lotId,modelId,this.createdAt);}
+ balance(lotId:string,modelId:string){this.append("UPDATE stockLots SET revision=CASE WHEN deletedAt='' THEN revision+1 ELSE NULL END WHERE id=? AND scope=?",lotId,this.scope);this.append('INSERT OR IGNORE INTO stockLotBalances(id,scope,lotId,modelId,quantity,unitCost,createdAt) VALUES (?,?,?,?,0,0,?)',crypto.randomUUID(),this.scope,lotId,modelId,this.createdAt);}
  async add(lotId:string,modelId:string,quantity:number,unitCost:number|null,details:any[]=[]){
   if(details.length&&details.length!==quantity)throw Error('A quantidade de chassis não corresponde às motos recebidas.');
   this.balance(lotId,modelId);
@@ -25,7 +25,7 @@ export class LotBook {
  }
  async take(modelId:string,quantity:number,lotId?:string,unitId?:string,kind:'sold'|'out'='out'){
   if(unitId&&quantity!==1)throw Error('Uma moto com chassi corresponde a uma unidade.');
-  const rows=(await this.stmt("SELECT u.* FROM bikeUnits u JOIN stockLots l ON l.id=u.lotId WHERE u.scope=? AND u.modelId=? AND u.status='available'"+(lotId?' AND u.lotId=?':'')+(unitId?' AND u.id=?':'')+" ORDER BY COALESCE(NULLIF(l.receivedDate,''),'0001-01-01'),l.createdAt,l.id,u.createdAt,u.id LIMIT ?",this.scope,modelId,...(lotId?[lotId]:[]),...(unitId?[unitId]:[]),quantity).all<any>()).results;
+  const rows=(await this.stmt("SELECT u.* FROM bikeUnits u JOIN stockLots l ON l.id=u.lotId WHERE u.scope=? AND u.modelId=? AND u.status='available' AND l.deletedAt=''"+(lotId?' AND u.lotId=?':'')+(unitId?' AND u.id=?':'')+" ORDER BY COALESCE(NULLIF(l.receivedDate,''),'0001-01-01'),l.createdAt,l.id,u.createdAt,u.id LIMIT ?",this.scope,modelId,...(lotId?[lotId]:[]),...(unitId?[unitId]:[]),quantity).all<any>()).results;
   if(rows.length<quantity)throw Error('Moto indisponível ou quantidade insuficiente no lote selecionado.');
   const groups=new Map<string,Allocation>();
   for(const u of rows){
@@ -35,6 +35,7 @@ export class LotBook {
   return [...groups.values()];
  }
  sync(modelId:string){
+  this.append("UPDATE stockLots SET revision=revision+1 WHERE scope=? AND id IN (SELECT lotId FROM stockLotBalances WHERE scope=? AND modelId=?)",this.scope,this.scope,modelId);
   this.append("UPDATE stockLotBalances SET quantity=(SELECT count(*) FROM bikeUnits u WHERE u.scope=stockLotBalances.scope AND u.modelId=stockLotBalances.modelId AND u.lotId=stockLotBalances.lotId AND u.status='available'),unitCost=COALESCE((SELECT ROUND(AVG(COALESCE(u.unitCost,0))) FROM bikeUnits u WHERE u.scope=stockLotBalances.scope AND u.modelId=stockLotBalances.modelId AND u.lotId=stockLotBalances.lotId AND u.status='available'),unitCost),revision=revision+1 WHERE scope=? AND modelId=?",this.scope,modelId);
   this.append("UPDATE models SET stock=(SELECT count(*) FROM bikeUnits WHERE scope=? AND modelId=? AND status='available'),cost=COALESCE((SELECT ROUND(AVG(COALESCE(unitCost,0))) FROM bikeUnits WHERE scope=? AND modelId=? AND status='available'),cost),archived=0 WHERE id=? AND scope=?",this.scope,modelId,this.scope,modelId,modelId,this.scope);
  }
@@ -46,7 +47,7 @@ export class LotBook {
   this.sync(modelId);return rows;
  }
  restoreUnit(unit:any){
-  this.append("UPDATE bikeUnits SET status='available',revision=CASE WHEN status='sold' THEN revision+1 ELSE NULL END WHERE id=? AND scope=?",unit.unitId,this.scope);
+  this.append("UPDATE bikeUnits SET status='available',revision=CASE WHEN status='sold' AND EXISTS(SELECT 1 FROM stockLots l WHERE l.id=bikeUnits.lotId AND l.scope=bikeUnits.scope AND l.deletedAt='') THEN revision+1 ELSE NULL END WHERE id=? AND scope=?",unit.unitId,this.scope);
  }
  async restore(modelId:string,quantity:number,unitCost:number,lotId?:string){
   const target=lotId||await this.lot('ESTORNO ANTERIOR',{notes:'Estorno de venda anterior à identificação de motos.'});await this.add(target,modelId,quantity,unitCost);return target;

@@ -1,4 +1,11 @@
 import type {Database,Prepared} from './runtime.ts';
+import {allocationForExpense} from './expense-allocation-server.ts';
+
+export function insertExpenseStatements(db:Database,scope:string,p:any,id:string,createdAt:string,allocationUnits:string){
+ const {id:ignored,revision,payment,paymentDate,...fields}=p,amount=p.quantity*p.unitAmount,row={...fields,allocationUnits,id,scope,amount,createdAt},keys=Object.keys(row),statements=[db.prepare(`INSERT INTO expenses (${keys.join(',')}) VALUES (${keys.map(()=>'?').join(',')})`).bind(...Object.values(row))];
+ if(p.paid)statements.push(db.prepare('INSERT INTO ledger(id,scope,type,amount,expenseId,description,category,payment,date,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),scope,'out',p.paid,id,'Despesa · '+p.description,p.category,payment,paymentDate,createdAt));
+ return statements;
+}
 export async function expenseStatements(db:Database,scope:string,action:string,p:any,id:string,createdAt:string){
  const statements:Prepared[]=[],stmt=(sql:string,...args:any[])=>db.prepare(sql).bind(...args);
  const insert=(table:string,row:Record<string,any>)=>{const keys=Object.keys(row);statements.push(stmt(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map(()=>'?').join(',')})`,...Object.values(row)));};
@@ -7,10 +14,12 @@ export async function expenseStatements(db:Database,scope:string,action:string,p
  const payment=(expenseId:string,amount:number,method:string,date:string,description:string,category:string)=>{if(amount)insert('ledger',{id:crypto.randomUUID(),scope,type:'out',amount,expenseId,description:'Despesa · '+description,category,payment:method,date,createdAt});};
  if(action==='expense'){
   if(found?.paid>0)throw Error('Despesas com pagamentos não podem ser editadas. O histórico foi preservado.');
-  for(const [key,table] of [['purchaseId','purchases'],['lotId','stockLots'],['saleId','sales']]){
+  for(const [key,table] of [['purchaseId','purchases'],['lotId','stockLots'],['saleId','sales'],['unitId','bikeUnits']]){
    if(p[key]&&!await stmt(`SELECT id FROM ${table} WHERE id=? AND scope=?`,p[key],scope).first())throw Error('Vínculo da despesa não encontrado.');
   }
   const {id:existing,revision,payment:method,paymentDate,...fields}=p,expenseId=existing||id,amount=p.quantity*p.unitAmount;
+  const sameTarget=found&&['purchaseId','lotId','saleId','unitId'].every(k=>(found[k]||null)===(p[k]||null));
+  fields.allocationUnits=sameTarget&&found.allocationUnits?found.allocationUnits:await allocationForExpense(db,scope,p);
   if(found){const keys=Object.keys(fields);statements.push(stmt(`UPDATE expenses SET ${keys.map(k=>k+'=?').join(',')},amount=?,revision=CASE WHEN revision=? AND paid=0 AND status='active' THEN revision+1 ELSE NULL END WHERE id=? AND scope=?`,...Object.values(fields),amount,p.revision,p.id,scope));}
   else insert('expenses',{...fields,id:expenseId,scope,amount,createdAt});
   payment(expenseId,p.paid,method,paymentDate,p.description,p.category);

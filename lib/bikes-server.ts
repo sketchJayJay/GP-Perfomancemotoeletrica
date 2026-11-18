@@ -6,17 +6,17 @@ export async function bikeStatements(db:Database,scope:string,action:string,p:an
  const insert=(table:string,row:Record<string,any>)=>{const keys=Object.keys(row);statements.push(stmt(`INSERT INTO ${table} (${keys.join(',')}) VALUES (${keys.map(()=>'?').join(',')})`,...Object.values(row)));};
  if(action==='stockLot'){
   const found=p.id?await stmt('SELECT * FROM stockLots WHERE scope=? AND id=?',scope,p.id).first<any>():null;
-  if(p.id&&(!found||found.revision!==p.revision))throw Error('Este lote foi alterado. Atualize a página.');
-  const duplicate=await stmt('SELECT id FROM stockLots WHERE scope=? AND code=? COLLATE NOCASE AND id!=?',scope,p.code,p.id||'').first();if(duplicate)throw Error('Já existe um lote com esse número.');
+  if(p.id&&(!found||found.deletedAt||found.revision!==p.revision))throw Error('Este lote foi alterado. Atualize a página.');
+  const duplicate=await stmt('SELECT id,deletedAt FROM stockLots WHERE scope=? AND code=? COLLATE NOCASE AND id!=?',scope,p.code,p.id||'').first<any>();if(duplicate)throw Error(duplicate.deletedAt?'Este número pertence a um lote excluído. Restaure o lote para reutilizá-lo.':'Já existe um lote com esse número.');
   const purchase=await stmt("SELECT id FROM purchases WHERE scope=? AND lotCode=? COLLATE NOCASE AND status!='cancelled' AND id!=?",scope,p.code,found?.purchaseId||'').first();if(purchase)throw Error('Este número pertence a uma compra. Receba essa compra para abrir o lote no estoque.');
   const fields={code:p.code,supplier:p.supplier,carrier:p.carrier,receivedDate:p.receivedDate,notes:p.notes};
-  if(found){const keys=Object.keys(fields);statements.push(stmt(`UPDATE stockLots SET ${keys.map(k=>k+'=?').join(',')},revision=CASE WHEN revision=? THEN revision+1 ELSE NULL END WHERE id=? AND scope=?`,...Object.values(fields),p.revision,p.id,scope));if(found.purchaseId)statements.push(stmt('UPDATE purchases SET lotCode=?,revision=revision+1 WHERE id=? AND scope=?',p.code,found.purchaseId,scope));}
+  if(found){const keys=Object.keys(fields);statements.push(stmt(`UPDATE stockLots SET ${keys.map(k=>k+'=?').join(',')},revision=CASE WHEN revision=? AND deletedAt='' THEN revision+1 ELSE NULL END WHERE id=? AND scope=?`,...Object.values(fields),p.revision,p.id,scope));if(found.purchaseId)statements.push(stmt('UPDATE purchases SET lotCode=?,revision=revision+1 WHERE id=? AND scope=?',p.code,found.purchaseId,scope));}
   else insert('stockLots',{...fields,id,scope,createdAt});
   return statements;
  }
  const found=p.id?await stmt('SELECT * FROM bikeUnits WHERE scope=? AND id=?',scope,p.id).first<any>():null;
  if(p.id&&(!found||found.revision!==p.revision))throw Error('Esta moto foi alterada. Atualize a página.');
- const lot=await stmt('SELECT id FROM stockLots WHERE scope=? AND id=?',scope,p.lotId).first();if(!lot)throw Error('Lote não encontrado.');
+ const lot=await stmt('SELECT id FROM stockLots WHERE scope=? AND id=? AND deletedAt=\'\'',scope,p.lotId).first();if(!lot)throw Error('Lote indisponível ou excluído. Selecione um lote ativo.');
  const key=chassisKey(p.chassis);
  if(key&&await stmt('SELECT id FROM bikeUnits WHERE scope=? AND chassisKey=? AND id!=?',scope,key,p.id||'').first())throw Error('Já existe uma moto com esse chassi. Confira o cadastro existente.');
  let modelId=found?.modelId||p.modelId;

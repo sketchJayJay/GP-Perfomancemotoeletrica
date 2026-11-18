@@ -1,3 +1,4 @@
+import {ensureExpenseAllocations} from './expense-allocation-server.ts';
 import {ensureBikeUnits} from './bikes-runtime.ts';
 import {seedProvidedBikes} from './provided-bikes-server.ts';
 import {ensureLegacyStockLots} from './legacy-lots.ts';
@@ -49,5 +50,6 @@ export async function openDatabase(){
  ensureLegacyStockLots(raw);
  ensureBikeUnits(raw);
  await seedProvidedBikes(env.DB,storeScope);
+ ensureExpenseAllocations(raw);
  return env.DB;
 }

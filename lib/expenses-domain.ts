@@ -1,14 +1,16 @@
 import type {Data,Expense} from './domain.ts';
+import {expenseUnitIds} from './sale-profit.ts';
 
-export const expenseCategories=['Viagem para compra','Viagem para venda / entrega','Montagem','Combustível','Pedágio','Alimentação','Hospedagem','Frete extra','Manutenção / reparo','Comissão','Outras despesas'] as const;
-export type ExpenseLink={purchaseId?:string|null;lotId?:string|null;saleId?:string|null};
+export const expenseCategories=['Viagem para compra','Viagem para venda / entrega','Montagem','Combustível','Pedágio','Alimentação','Hospedagem','Frete extra','Frete / entrega','Manutenção / reparo','Comissão','Outras despesas'] as const;
+export type ExpenseLink={purchaseId?:string|null;lotId?:string|null;saleId?:string|null;unitId?:string|null};
 export function relatedExpenses(data:Data,link:ExpenseLink){
  const purchaseId=link.purchaseId||data.stockLots.find(l=>l.id===link.lotId)?.purchaseId;
  const lots=data.stockLots.filter(l=>l.purchaseId&&l.purchaseId===purchaseId).map(l=>l.id);
- return (data.expenses||[]).filter(e=>link.saleId?e.saleId===link.saleId:link.lotId?(e.lotId===link.lotId||!!purchaseId&&e.purchaseId===purchaseId):link.purchaseId?(e.purchaseId===link.purchaseId||!!e.lotId&&lots.includes(e.lotId)):false);
+ return (data.expenses||[]).filter(e=>link.unitId?e.unitId===link.unitId:link.saleId?e.saleId===link.saleId:link.lotId?(e.lotId===link.lotId||!!purchaseId&&e.purchaseId===purchaseId):link.purchaseId?(e.purchaseId===link.purchaseId||!!e.lotId&&lots.includes(e.lotId)):false);
 }
 export function expenseTotals(items:Expense[]){const active=items.filter(e=>e.status==='active'),total=active.reduce((n,e)=>n+e.amount,0),paid=active.reduce((n,e)=>n+e.paid,0);return {total,paid,balance:total-paid};}
 export function expenseLinkLabel(data:Data,e:ExpenseLink){
+ if(e.unitId){const u=data.bikeUnits.find(u=>u.id===e.unitId),m=data.models.find(m=>m.id===u?.modelId);return 'Moto '+(u?.chassis||m?.name||'sem chassi')+' · Lote '+(data.stockLots.find(l=>l.id===u?.lotId)?.code||'indisponível');}
  if(e.purchaseId){const p=data.purchases.find(p=>p.id===e.purchaseId);return p?'Compra '+p.number+' · Lote '+(p.lotCode||p.number):'Compra indisponível';}
  if(e.lotId)return 'Lote '+(data.stockLots.find(l=>l.id===e.lotId)?.code||'indisponível');
  if(e.saleId){const s=data.sales.find(s=>s.id===e.saleId);return 'Venda '+(s?.number||'indisponível')+(s?.chassis?' · '+s.chassis:'');}
@@ -22,8 +24,10 @@ export function demoExpenseAction(d:Data,action:string,p:any,id:string,createdAt
  const pay=(expenseId:string,amount:number,payment:string,paymentDate:string,description:string,category:string)=>{if(amount)d.ledger.unshift({id:crypto.randomUUID(),type:'out',amount,expenseId,description:'Despesa · '+description,category,payment,date:paymentDate,createdAt});};
  if(action==='expense'){
   if(found?.paid)throw Error('Despesas com pagamentos não podem ser editadas. O histórico foi preservado.');
-  for(const [field,rows] of [['purchaseId',d.purchases],['lotId',d.stockLots],['saleId',d.sales]] as const)if(p[field]&&!rows.some(r=>r.id===p[field]))throw Error('Vínculo da despesa não encontrado.');
+  for(const [field,rows] of [['purchaseId',d.purchases],['lotId',d.stockLots],['saleId',d.sales],['unitId',d.bikeUnits]] as const)if(p[field]&&!rows.some(r=>r.id===p[field]))throw Error('Vínculo da despesa não encontrado.');
   const {id:ignored,revision,payment,paymentDate,...fields}=p,expenseId=found?.id||id;
+  const sameTarget=found&&['purchaseId','lotId','saleId','unitId'].every(k=>((found as any)[k]||null)===(p[k]||null));
+  const allocation=expenseUnitIds(d,p);fields.allocationUnits=sameTarget&&found.allocationUnits?found.allocationUnits:allocation.length?JSON.stringify(allocation):[p.purchaseId,p.lotId,p.saleId,p.unitId].some(Boolean)?'':'[]';
   if(found)Object.assign(found,fields,{amount:p.quantity*p.unitAmount,revision:found.revision+1});
   else d.expenses.unshift({...fields,id:expenseId,amount:p.quantity*p.unitAmount,status:'active',revision:0,createdAt});
   pay(expenseId,p.paid,payment,paymentDate,p.description,p.category);
