@@ -8,6 +8,8 @@ import {type SaleExpenseInput} from '@/lib/sale-expenses';
 import {expenseCategories} from '@/lib/expenses-domain';
 import {F,MoneyInput} from './Forms';
 import {Empty,Tag,exportCsv} from './Dashboard';
+import {CostGate} from './CostPrivacy';
+import {costsHidden} from '@/lib/costs-domain';
 
 export type ExpenseDraft=SaleExpenseInput&{key:string;isPaid:boolean};
 export const expensePayload=(rows:ExpenseDraft[]):SaleExpenseInput[]=>rows.map(({key,isPaid,...r})=>({...r,paid:isPaid?r.amount:0,dueDate:isPaid?'':r.dueDate,paymentDate:isPaid?r.paymentDate:''}));
@@ -36,6 +38,7 @@ export function SaleExpenseEditor({rows,onChange}:{rows:ExpenseDraft[];onChange:
 
 export function ProfitPreview({unitId,revenue,draftExpenses}:{unitId:string;revenue:number;draftExpenses:number}){
  const {data}=useApp(),r=previewBikeProfit(data,unitId,revenue,draftExpenses);
+ if(costsHidden(data))return <CostGate title="Lucro da moto protegido"><></></CostGate>;
  return <section className={'profit-preview'+(r.profit<0?' loss':'')} aria-live="polite">
   <div className="profit-section-heading"><div><span className="profit-eyebrow">ANTES DE CONFIRMAR</span><h3>{r.partial?'Resultado parcial da moto':'Lucro previsto desta moto'}</h3></div><TrendingUp size={25}/></div>
   <dl className="profit-calculation"><div><dt>Valor da venda, com desconto</dt><dd>{money(revenue)}</dd></div><div><dt>Custo da moto</dt><dd>{r.partial?'A informar':'− '+money(r.cost)}</dd></div><div><dt>Gastos da moto e rateios já cadastrados</dt><dd>− {money(r.registered)}</dd></div><div><dt>Comissões e despesas desta venda</dt><dd>− {money(draftExpenses)}</dd></div><div className="profit-final"><dt>{r.partial?'Resultado parcial':r.profit<0?'Prejuízo previsto':'Lucro previsto'}</dt><dd>{money(r.profit)}</dd></div></dl>
@@ -45,6 +48,7 @@ export function ProfitPreview({unitId,revenue,draftExpenses}:{unitId:string;reve
 
 export function SaleProfitPanel({sale}:{sale:Sale}){
  const {data,open}=useApp(),r=saleProfit(data,sale);
+ if(costsHidden(data))return <CostGate title="Lucro e custo protegidos"><></></CostGate>;
  if(sale.status!=='active')return <aside className="profit-cancelled">Venda cancelada: fora do relatório de lucro. As despesas já realizadas continuam no financeiro.</aside>;
  return <section className={'sale-profit-panel'+(r.profit<0?' loss':'')}>
   <div className="profit-section-heading"><div><span className="profit-eyebrow">RESUMO INTERNO DA VENDA</span><h3>{r.partial?'Resultado parcial':sale.quantity===1?'Lucro desta moto':'Lucro das motos desta venda'}</h3><p>Após o custo e todas as despesas vinculadas, inclusive as que faltam pagar.</p></div><Tag tone={r.partial?'amber':r.profit<0?'rose':'green'}>{r.partial?'Conferir custos':r.profit<0?'Prejuízo':'Lucro apurado'}</Tag></div>
@@ -59,11 +63,12 @@ export function SaleProfitPanel({sale}:{sale:Sale}){
 }
 
 export default function ProfitReport(){
- const {data,open}=useApp(),[month,setMonth]=useState(today().slice(0,7)),[q,setQ]=useState('');
+ const {data,open,requestCosts}=useApp(),[month,setMonth]=useState(today().slice(0,7)),[q,setQ]=useState('');
+ if(costsHidden(data))return <CostGate title="Relatório de lucro protegido"><></></CostGate>;
  const records=data.sales.filter(s=>s.status==='active'&&(!month||s.date.startsWith(month))).map(s=>saleProfit(data,s)).filter(r=>{const text=r.sale.number+' '+data.customers.find(c=>c.id===r.sale.customerId)?.name+' '+data.models.find(m=>m.id===r.sale.modelId)?.name+' '+r.units.map(u=>u.chassis).join(' ');return text.toLowerCase().includes(q.toLowerCase());});
  const sum=(field:'revenue'|'cost'|'expenses'|'profit')=>records.reduce((n,r)=>n+r[field],0),partial=records.some(r=>r.partial);
  const rows=records.flatMap(r=>(r.units.length?r.units:[{unitId:'',chassis:r.sale.chassis||'Venda sem identificação individual',revenue:r.revenue,cost:r.cost,expenses:r.expenses,profit:r.profit,partial:true}]).map(u=>({...u,sale:r.sale,model:data.models.find(m=>m.id===r.sale.modelId)?.name||'Moto'})));
- const csv=()=>exportCsv('GP_Lucro_Por_Moto_'+(month||'Todos')+'.csv',['Data','Venda','Moto','Chassi','Venda (R$)','Custo (R$)','Despesas (R$)','Lucro (R$)','Apuração'],rows.map(r=>[dateLabel(r.sale.date),r.sale.number,r.model,r.chassis,(r.revenue/100).toFixed(2),(r.cost/100).toFixed(2),(r.expenses/100).toFixed(2),(r.profit/100).toFixed(2),r.partial?'Parcial':'Custos informados']));
+ const csv=()=>costsHidden(data)?requestCosts?.():exportCsv('GP_Lucro_Por_Moto_'+(month||'Todos')+'.csv',['Data','Venda','Moto','Chassi','Venda (R$)','Custo (R$)','Despesas (R$)','Lucro (R$)','Apuração'],rows.map(r=>[dateLabel(r.sale.date),r.sale.number,r.model,r.chassis,(r.revenue/100).toFixed(2),(r.cost/100).toFixed(2),(r.expenses/100).toFixed(2),(r.profit/100).toFixed(2),r.partial?'Parcial':'Custos informados']));
  return <div className="profit-report"><div className="profit-section-heading"><div><h2>Lucro por moto</h2><p>Saiba o que cada venda deixou depois do custo, comissões e gastos vinculados.</p></div><button className="btn secondary" onClick={csv}><Download size={16}/>Exportar</button></div>
   <div className="profit-report-filters"><F label="Mês da venda"><input aria-label="Mês do lucro por moto" type="month" value={month} onChange={e=>setMonth(e.target.value)}/></F><button className="btn secondary" onClick={()=>setMonth('')}>Todos os meses</button><label className="search-field"><Search size={16}/><input aria-label="Buscar lucro por moto" placeholder="Moto, chassi, cliente ou venda..." value={q} onChange={e=>setQ(e.target.value)}/></label></div>
   <div className="profit-equation"><div><span>Vendas filtradas</span><strong>{money(sum('revenue'))}</strong></div><div><span>Custo das motos</span><strong>{money(sum('cost'))}</strong></div><div><span>Despesas vinculadas</span><strong>{money(sum('expenses'))}</strong></div><div className={'profit-equation-net'+(sum('profit')<0?' loss':'')}><span>{partial?'Resultado parcial':'Lucro das motos'}</span><strong>{money(sum('profit'))}</strong></div></div>

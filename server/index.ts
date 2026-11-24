@@ -6,6 +6,8 @@ import {openDatabase,authorizeRequest,storeScope,createSnapshot,env} from '../li
 import {readData,action,assertOrigin,processBirthdays} from '../lib/server.ts';
 import {setupRequired,bootstrapAdmin,createAdmin,createSession,login,authenticated,sessionCookie,logout} from './auth.ts';
 import {startJobs} from './jobs.ts';
+import {costAccess,unlockCosts,lockCosts,configureCosts,requireCosts,protectCostAction} from './cost-privacy.ts';
+import {withCostPrivacy} from '../lib/costs-domain.ts';
 
 const mime:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpeg':'image/jpeg','.jpg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2','.json':'application/json; charset=utf-8','.ico':'image/x-icon'};
 export async function startServer(){
@@ -19,7 +21,7 @@ export async function startServer(){
    const base=publicUrl||`${protocol}://${host}`,url=new URL(incoming.url||'/',base);if(url.origin!==base)throw Error('Endereço inválido.');
    const headers=new Headers();for(const [key,value] of Object.entries(incoming.headers))if(value!==undefined)headers.set(key,Array.isArray(value)?value.join(', '):value);
    const req=new Request(url,{method:incoming.method,headers}),secure=base.startsWith('https://'),path=url.pathname;
-   if(path==='/api/health'&&incoming.method==='GET'){env.DB!.raw.prepare('SELECT 1').get();send(200,{status:'ok',app:'GP Performance',version:'1.5.0'});return;}
+   if(path==='/api/health'&&incoming.method==='GET'){env.DB!.raw.prepare('SELECT 1').get();send(200,{status:'ok',app:'GP Performance',version:'1.6.0'});return;}
    if(!path.startsWith('/api/')){
     if(incoming.method!=='GET'&&incoming.method!=='HEAD'){send(405,{error:'Método não permitido.'});return;}
     let requested=resolve(dist,'.'+decodeURIComponent(path));if(requested!==dist&&!requested.startsWith(dist+sep)){send(404,{error:'Não encontrado.'});return;}
@@ -39,14 +41,17 @@ export async function startServer(){
    if(path==='/api/auth/login'&&incoming.method==='POST'){const ip=String(incoming.headers['x-forwarded-for']||incoming.socket.remoteAddress||'local').split(',')[0].trim();const token=await login(body.username,body.password,ip);send(200,{ok:true},{'Set-Cookie':sessionCookie(token,secure)});return;}
    if(path==='/api/auth/logout'&&incoming.method==='POST'){logout(req);send(200,{ok:true},{'Set-Cookie':sessionCookie('',secure)});return;}
    authorizeRequest(req);
-   if(path==='/api/data'&&incoming.method==='GET'){send(200,await readData(storeScope));return;}
-   if(path==='/api/action'&&incoming.method==='POST'){send(200,{ok:true,...await action(storeScope,body.action,body.payload,body.requestId||'')});return;}
+   if(path==='/api/costs/unlock'&&incoming.method==='POST'){send(200,await unlockCosts(req,storeScope,body.password));return;}
+   if(path==='/api/costs/lock'&&incoming.method==='POST'){send(200,{costAccess:lockCosts(req,storeScope)});return;}
+   if(path==='/api/costs/settings'&&incoming.method==='POST'){send(200,{costAccess:await configureCosts(req,storeScope,body)});return;}
+   if(path==='/api/data'&&incoming.method==='GET'){send(200,withCostPrivacy(await readData(storeScope),costAccess(req,storeScope)));return;}
+   if(path==='/api/action'&&incoming.method==='POST'){send(200,{ok:true,...await action(storeScope,body.action,protectCostAction(req,storeScope,body.action,body.payload),body.requestId||'')});return;}
    if(path==='/api/birthdays/run'&&incoming.method==='POST'){send(200,await processBirthdays(storeScope));return;}
    if(path==='/api/backup/sqlite'&&incoming.method==='GET'){
-    const file=await createSnapshot('download');try{const bytes=readFileSync(file);outgoing.writeHead(200,{'Content-Type':'application/vnd.sqlite3','Content-Disposition':'attachment; filename="GP_Performance_Backup.sqlite"','Cache-Control':'no-store'});outgoing.end(bytes);}finally{unlinkSync(file);}return;
+    requireCosts(req,storeScope);const file=await createSnapshot('download');try{const bytes=readFileSync(file);outgoing.writeHead(200,{'Content-Type':'application/vnd.sqlite3','Content-Disposition':'attachment; filename="GP_Performance_Backup.sqlite"','Cache-Control':'no-store'});outgoing.end(bytes);}finally{unlinkSync(file);}return;
    }
    send(404,{error:'Não encontrado.'});
-  }catch(error:any){const message=error.issues?.[0]?.message||(/bikeUnits.*chassisKey/.test(error.message)?'Já existe uma moto com esse chassi.':/constraint|SQLITE|D1_ERROR/i.test(error.message)?'O estoque ou a venda mudou. Atualize e confira os valores.':error.message||'Não foi possível concluir a operação.');send(400,{error:message});}
+  }catch(error:any){const message=error.issues?.[0]?.message||(/bikeUnits.*chassisKey/.test(error.message)?'Já existe uma moto com esse chassi.':/constraint|SQLITE|D1_ERROR/i.test(error.message)?'O estoque ou a venda mudou. Atualize e confira os valores.':error.message||'Não foi possível concluir a operação.');send(error.status||400,{error:message});}
  });
  const port=Number(process.env.PORT||3000);await new Promise<void>((ok,reject)=>{server.once('error',reject);server.listen(port,process.env.HOST||'0.0.0.0',ok);});
  const address=server.address();console.log('GP Performance pronta na porta '+(typeof address==='object'?address?.port:port));

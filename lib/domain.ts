@@ -1,3 +1,4 @@
+import type {CostAccess} from './costs-domain.ts';
 import {expenseUnitIds} from './sale-profit.ts';
 import {saleExpenseFields} from './sale-expenses.ts';
 import {demoLotExclusion} from './lot-exclusion-demo.ts';
@@ -22,7 +23,7 @@ export type LotBalance={id:string;lotId:string;modelId:string;quantity:number;un
 export type SaleLot={id:string;saleId:string;lotId:string;modelId:string;quantity:number;unitCost:number;createdAt:string};
 export type BikeUnit={excludedWithLot?:number;id:string;modelId:string;lotId:string;chassis:string;condition:'new'|'used'|'unknown';status:'available'|'sold'|'out';price:number;unitCost:number|null;image:string;odometer:number|null;year:number|null;receivedDate:string;notes:string;sourceKey?:string|null;revision:number;createdAt:string};
 export type SaleUnit={id:string;saleId:string;unitId:string;modelId:string;lotId:string;chassis:string;condition:string;unitCost:number|null;createdAt:string};
-export type Data={bikeUnits:BikeUnit[];saleUnits:SaleUnit[];dataImports:{id:string;result:string;createdAt:string}[];expenses:Expense[];stockLots:StockLot[];stockLotBalances:LotBalance[];saleLots:SaleLot[];purchases:Purchase[];purchaseItems:PurchaseItem[];models:Model[];customers:Customer[];sales:Sale[];movements:Movement[];ledger:Entry[];settings:Settings;birthdayLogs:BirthdayLog[];providerReady:boolean};
+export type Data={costAccess?:CostAccess;bikeUnits:BikeUnit[];saleUnits:SaleUnit[];dataImports:{id:string;result:string;createdAt:string}[];expenses:Expense[];stockLots:StockLot[];stockLotBalances:LotBalance[];saleLots:SaleLot[];purchases:Purchase[];purchaseItems:PurchaseItem[];models:Model[];customers:Customer[];sales:Sale[];movements:Movement[];ledger:Entry[];settings:Settings;birthdayLogs:BirthdayLog[];providerReady:boolean};
 export const defaultSettings:Settings={storeName:'GP Performance',phone:'',document:'',address:'',monthlyGoal:10000000,birthdayEnabled:0,birthdayTemplate:'Olá, {nome}! 🎉 A equipe {loja} deseja um feliz aniversário! Que seu novo ciclo venha cheio de energia e bons caminhos. Conte com a gente! ⚡🏍️'};
 export const emptyData=():Data=>({bikeUnits:[],saleUnits:[],dataImports:[],expenses:[],stockLots:[],stockLotBalances:[],saleLots:[],purchases:[],purchaseItems:[],models:[],customers:[],sales:[],movements:[],ledger:[],settings:{...defaultSettings},birthdayLogs:[],providerReady:false});
 export const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());

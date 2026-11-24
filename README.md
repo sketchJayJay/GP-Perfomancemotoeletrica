@@ -1,4 +1,4 @@
-# GP Performance — edição Coolify 1.5.0
+# GP Performance — edição Coolify 1.6.0
 
 Sistema de vendas de motos elétricas com estoque, entradas/saídas, modelos com fotos, clientes, vendas com desconto e pagamento parcial, financeiro com gastos das motos e contas a pagar, recibos para imprimir/salvar em PDF, exportações e aniversários via Z-API.
 
@@ -71,3 +71,7 @@ A versão 1.4.1 adiciona **Excluir lote** no cartão e nos detalhes do lote. A e
 ## Lucro por moto e comissões
 
 A versão 1.5 inclui despesas e várias comissões na própria venda, prévia do lucro, resumo interno detalhado e relatório **Financeiro → Lucro por moto**, com filtro por mês e exportação. Também permite vincular gastos diretamente ao chassi. Gastos comuns da compra/lote são rateados em centavos e acompanham as motos identificadas no lançamento; o frete da compra, já presente no custo, não é descontado novamente. Consulte [ATUALIZACAO_LUCRO_POR_MOTO.md](ATUALIZACAO_LUCRO_POR_MOTO.md).
+
+## Custos protegidos por senha
+
+A versão 1.6 adiciona **Configurações → Privacidade dos custos**. O responsável ativa a proteção e define uma senha própria. Depois disso, custos, lucro, margem, compras, resultado financeiro e backups completos exigem liberação. O botão **Ver custos** libera a consulta por cinco minutos; **Ocultar custos** bloqueia imediatamente. Atualizar a página também exige nova liberação. Leia [ATUALIZACAO_SENHA_CUSTOS.md](ATUALIZACAO_SENHA_CUSTOS.md).
